@@ -77,6 +77,12 @@ TOPIC_TEMPLATE = """\
   ({{ beliefs|selectattr('truth_value', 'eq', 'IN')|list|length }} IN,
    {{ beliefs|selectattr('truth_value', 'eq', 'OUT')|list|length }} OUT)</p>
 
+{% if summary %}
+<section class="summary">
+{{ summary|paragraphs }}
+</section>
+{% endif %}
+
 <ul class="belief-list">
 {% for b in beliefs %}
   <li>
@@ -114,6 +120,13 @@ BELIEF_TEMPLATE = """\
   {% endif %}</p>
 
   <blockquote>{{ text }}</blockquote>
+
+  {% if summary %}
+  <section class="summary">
+  <h2>Summary</h2>
+  <p>{{ summary }}</p>
+  </section>
+  {% endif %}
 
   {% if justifications %}
   <h2>Justifications</h2>
@@ -165,18 +178,27 @@ BELIEF_TEMPLATE = """\
 """
 
 
+def _paragraphs(text):
+    """Convert plain text with blank-line separators into <p> tags."""
+    if not text:
+        return ""
+    from markupsafe import Markup, escape
+    paras = [p.strip() for p in text.split("\n\n") if p.strip()]
+    return Markup("\n".join(f"<p>{escape(p)}</p>" for p in paras))
+
+
 def build_jinja_env():
     """Create a Jinja2 environment with all templates loaded."""
     env = Environment(loader=BaseLoader())
     env.globals["root"] = ""
+    env.filters["paragraphs"] = _paragraphs
     templates = {
         "base.html": BASE_TEMPLATE,
         "index.html": INDEX_TEMPLATE,
         "topic.html": TOPIC_TEMPLATE,
         "belief.html": BELIEF_TEMPLATE,
     }
-    for name, source in templates.items():
-        env.loader = _DictLoader(templates)
+    env.loader = _DictLoader(templates)
     return env
 
 

@@ -22,10 +22,18 @@ def cli():
               help="Base URL for sitemap and canonical links")
 @click.option("--project-name", default=None,
               help="Override project name from network.json meta")
-def build(input_path, output_dir, base_url, project_name):
+@click.option("-m", "--model", default=None,
+              help="LLM model for page summaries (e.g. claude, gemini)")
+@click.option("--timeout", default=300, type=int,
+              help="LLM timeout in seconds (default: 300)")
+@click.option("--parallel", default=0, type=int,
+              help="Concurrent LLM workers (default: 0 = sequential)")
+def build(input_path, output_dir, base_url, project_name, model, timeout,
+          parallel):
     """Generate static wiki from a network.json export."""
     stats = generate_site(input_path, output_dir,
-                          base_url=base_url, project_name=project_name)
+                          base_url=base_url, project_name=project_name,
+                          model=model, timeout=timeout, parallel=parallel)
     click.echo(f"Generated {stats['beliefs']} belief pages, "
                f"{stats['topics']} topic pages")
     click.echo(f"Output: {output_dir}/")

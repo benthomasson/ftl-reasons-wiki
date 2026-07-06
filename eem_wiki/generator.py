@@ -10,8 +10,14 @@ from .templates import build_jinja_env
 from .topics import assign_topics
 
 
-def generate_site(input_path, output_dir, base_url="", project_name=None):
+def generate_site(input_path, output_dir, base_url="", project_name=None,
+                   model=None, timeout=300, parallel=0):
     """Generate the full static site from a network.json export.
+
+    Args:
+        model: If set, use this LLM to generate summaries for topic and belief pages.
+        timeout: LLM timeout in seconds.
+        parallel: Number of concurrent LLM workers (0 = sequential).
 
     Returns dict with generation stats.
     """
@@ -31,14 +37,22 @@ def generate_site(input_path, output_dir, base_url="", project_name=None):
     node_topic = _build_node_topic_map(topics)
     depth_map = _compute_depths(nodes)
 
+    topic_summaries = {}
+    belief_summaries = {}
+    if model:
+        topic_summaries = _generate_topic_summaries(
+            topics, nodes, model, timeout, parallel)
+        belief_summaries = _generate_belief_summaries(
+            nodes, model, timeout, parallel)
+
     env = build_jinja_env()
-    root = _relative_root("")
 
     os.makedirs(output_dir, exist_ok=True)
 
     _render_index(env, output_dir, meta, nodes, topics)
-    _render_topic_pages(env, output_dir, nodes, topics)
-    _render_belief_pages(env, output_dir, nodes, dependents, node_topic, depth_map, meta)
+    _render_topic_pages(env, output_dir, nodes, topics, topic_summaries)
+    _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
+                         depth_map, meta, belief_summaries)
     _render_sitemap(output_dir, nodes, topics, base_url)
     _render_robots_txt(output_dir, base_url)
     _render_llms_txt(output_dir, meta, nodes, topics)
@@ -101,9 +115,89 @@ def _compute_depths(nodes):
     return depths
 
 
-def _relative_root(from_path):
-    """Compute relative root path from a page location."""
-    return ""
+def _generate_topic_summaries(topics, nodes, model, timeout, parallel):
+    """Generate LLM summaries for each topic page."""
+    import sys
+    from .summarize import summarize_topic
+
+    print(f"Generating {len(topics)} topic summaries...", file=sys.stderr)
+    summaries = {}
+
+    items = list(topics.items())
+
+    if parallel > 0:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=parallel) as executor:
+            futures = {}
+            for topic, nids in items:
+                beliefs = [
+                    {"id": nid, "text": nodes.get(nid, {}).get("text", ""),
+                     "truth_value": nodes.get(nid, {}).get("truth_value", "?")}
+                    for nid in nids
+                ]
+                futures[executor.submit(
+                    summarize_topic, topic, beliefs, model, timeout
+                )] = topic
+            for future in as_completed(futures):
+                topic = futures[future]
+                try:
+                    summaries[topic] = future.result()
+                    print(f"  Topic '{topic}' summarized", file=sys.stderr)
+                except Exception as e:
+                    print(f"  WARN: topic '{topic}' failed: {e}",
+                          file=sys.stderr)
+    else:
+        for i, (topic, nids) in enumerate(items, 1):
+            print(f"  Summarizing topic {i}/{len(items)}: {topic}...",
+                  file=sys.stderr)
+            beliefs = [
+                {"id": nid, "text": nodes.get(nid, {}).get("text", ""),
+                 "truth_value": nodes.get(nid, {}).get("truth_value", "?")}
+                for nid in nids
+            ]
+            summaries[topic] = summarize_topic(topic, beliefs, model, timeout)
+
+    return summaries
+
+
+def _generate_belief_summaries(nodes, model, timeout, parallel):
+    """Generate LLM summaries for each belief page."""
+    import sys
+    from .summarize import summarize_belief
+
+    print(f"Generating {len(nodes)} belief summaries...", file=sys.stderr)
+    summaries = {}
+
+    items = list(nodes.items())
+
+    if parallel > 0:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=parallel) as executor:
+            futures = {}
+            for nid, node in items:
+                futures[executor.submit(
+                    summarize_belief, nid, node, nodes, model, timeout
+                )] = nid
+            done = 0
+            for future in as_completed(futures):
+                nid = futures[future]
+                done += 1
+                try:
+                    summaries[nid] = future.result()
+                    if done % 50 == 0:
+                        print(f"  {done}/{len(items)} beliefs summarized",
+                              file=sys.stderr)
+                except Exception as e:
+                    print(f"  WARN: belief '{nid}' failed: {e}",
+                          file=sys.stderr)
+    else:
+        for i, (nid, node) in enumerate(items, 1):
+            if i % 50 == 0:
+                print(f"  Summarizing belief {i}/{len(items)}...",
+                      file=sys.stderr)
+            summaries[nid] = summarize_belief(nid, node, nodes, model, timeout)
+
+    return summaries
 
 
 def _render_index(env, output_dir, meta, nodes, topics):
@@ -125,8 +219,9 @@ def _render_index(env, output_dir, meta, nodes, topics):
         f.write(html)
 
 
-def _render_topic_pages(env, output_dir, nodes, topics):
+def _render_topic_pages(env, output_dir, nodes, topics, topic_summaries=None):
     tmpl = env.get_template("topic.html")
+    summaries = topic_summaries or {}
     for topic, nids in topics.items():
         topic_dir = os.path.join(output_dir, "topic", topic)
         os.makedirs(topic_dir, exist_ok=True)
@@ -148,13 +243,16 @@ def _render_topic_pages(env, output_dir, nodes, topics):
             meta=None,
             topic_name=topic,
             beliefs=beliefs,
+            summary=summaries.get(topic, ""),
         )
         with open(os.path.join(topic_dir, "index.html"), "w") as f:
             f.write(html)
 
 
-def _render_belief_pages(env, output_dir, nodes, dependents, node_topic, depth_map, meta):
+def _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
+                         depth_map, meta, belief_summaries=None):
     tmpl = env.get_template("belief.html")
+    summaries = belief_summaries or {}
 
     for nid, node in nodes.items():
         belief_dir = os.path.join(output_dir, "belief", nid)
@@ -209,6 +307,7 @@ def _render_belief_pages(env, output_dir, nodes, dependents, node_topic, depth_m
             created_at=node.get("created_at", ""),
             reviewed_at=node.get("reviewed_at", ""),
             verified_at=node.get("verified_at", ""),
+            summary=summaries.get(nid, ""),
         )
         with open(os.path.join(belief_dir, "index.html"), "w") as f:
             f.write(html)

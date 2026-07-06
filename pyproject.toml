@@ -12,5 +12,11 @@ dependencies = [
     "jinja2>=3.0",
 ]
 
+[project.optional-dependencies]
+llm = ["ftl-reasons"]
+
+[tool.uv.sources]
+ftl-reasons = { path = "../ftl-reasons", editable = true }
+
 [project.scripts]
 eem-wiki = "eem_wiki.cli:cli"

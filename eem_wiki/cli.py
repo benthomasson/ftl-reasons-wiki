@@ -28,12 +28,15 @@ def cli():
               help="LLM timeout in seconds (default: 300)")
 @click.option("--parallel", default=0, type=int,
               help="Concurrent LLM workers (default: 0 = sequential)")
+@click.option("--no-topic-cache", is_flag=True, default=False,
+              help="Force fresh LLM topic classification (ignore cache)")
 def build(input_path, output_dir, base_url, project_name, model, timeout,
-          parallel):
+          parallel, no_topic_cache):
     """Generate static wiki from a network.json export."""
     stats = generate_site(input_path, output_dir,
                           base_url=base_url, project_name=project_name,
-                          model=model, timeout=timeout, parallel=parallel)
+                          model=model, timeout=timeout, parallel=parallel,
+                          no_topic_cache=no_topic_cache)
     click.echo(f"Generated {stats['beliefs']} belief pages, "
                f"{stats['topics']} topic pages")
     click.echo(f"Output: {output_dir}/")

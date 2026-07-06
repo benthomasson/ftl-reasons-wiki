@@ -11,7 +11,7 @@ from .topics import assign_topics
 
 
 def generate_site(input_path, output_dir, base_url="", project_name=None,
-                   model=None, timeout=300, parallel=0):
+                   model=None, timeout=300, parallel=0, no_topic_cache=False):
     """Generate the full static site from a network.json export.
 
     Args:
@@ -33,7 +33,13 @@ def generate_site(input_path, output_dir, base_url="", project_name=None,
         meta["project_name"] = basename or "Belief Wiki"
 
     dependents = _build_dependents_index(nodes)
-    topics = assign_topics(nodes)
+    if model:
+        from .topics import assign_topics_llm
+        topics = assign_topics_llm(
+            nodes, model, timeout=timeout, parallel=parallel,
+            output_dir=output_dir, no_cache=no_topic_cache)
+    else:
+        topics = assign_topics(nodes)
     node_topic = _build_node_topic_map(topics)
     depth_map = _compute_depths(nodes)
 

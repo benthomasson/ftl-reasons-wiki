@@ -178,6 +178,31 @@ BELIEF_TEMPLATE = """\
 """
 
 
+DIRECTORY_TEMPLATE = """\
+{% extends "base.html" %}
+{% block content %}
+<h1>EEM Belief Wikis</h1>
+
+<p>{{ wikis|length }} belief networks available.</p>
+
+<table>
+  <thead><tr><th>Wiki</th><th>Beliefs</th><th>IN</th><th>OUT</th><th>Topics</th></tr></thead>
+  <tbody>
+  {% for w in wikis %}
+    <tr>
+      <td><a href="{{ w.name }}/">{{ w.project_name or w.name }}</a></td>
+      <td>{{ w.beliefs }}</td>
+      <td>{{ w.in_count }}</td>
+      <td>{{ w.out_count }}</td>
+      <td>{{ w.topics }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+"""
+
+
 def _paragraphs(text):
     """Convert plain text with blank-line separators into <p> tags."""
     if not text:
@@ -197,6 +222,7 @@ def build_jinja_env():
         "index.html": INDEX_TEMPLATE,
         "topic.html": TOPIC_TEMPLATE,
         "belief.html": BELIEF_TEMPLATE,
+        "directory.html": DIRECTORY_TEMPLATE,
     }
     env.loader = _DictLoader(templates)
     return env

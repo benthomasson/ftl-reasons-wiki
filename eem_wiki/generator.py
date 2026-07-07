@@ -462,3 +462,21 @@ def _render_llms_txt(output_dir, meta, nodes, topics):
 
     with open(os.path.join(output_dir, "llms.txt"), "w") as f:
         f.write("\n".join(lines) + "\n")
+
+
+def generate_directory_index(output_dir, wiki_stats):
+    """Render a top-level directory page listing all wikis."""
+    from .templates import build_jinja_env
+    env = build_jinja_env()
+    tmpl = env.get_template("directory.html")
+    html = tmpl.render(
+        title="EEM Belief Wikis",
+        description="Directory of EEM belief network wikis",
+        canonical="",
+        root="",
+        meta=None,
+        wikis=wiki_stats,
+    )
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "index.html"), "w") as f:
+        f.write(html)

@@ -106,7 +106,8 @@ def build_all(config_path, output_dir, base_url, model, timeout, parallel,
             project_name=entry.get("project_name"),
             model=model, timeout=timeout, parallel=parallel,
             no_topic_cache=no_topic_cache,
-            topics_only=topics_only_val)
+            topics_only=topics_only_val,
+            directory_root="../")
 
         stats["name"] = name
         stats["project_name"] = entry.get("project_name", "")

@@ -13,7 +13,7 @@ from .topics import assign_topics
 
 def generate_site(input_path, output_dir, base_url="", project_name=None,
                    model=None, timeout=300, parallel=0, no_topic_cache=False,
-                   topics_only=False):
+                   topics_only=False, directory_root=None):
     """Generate the full static site from a network.json export.
 
     Args:
@@ -60,6 +60,7 @@ def generate_site(input_path, output_dir, base_url="", project_name=None,
     _save_summary_cache(output_dir, summary_cache)
 
     env = build_jinja_env()
+    env.globals["directory_root"] = directory_root or ""
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -69,7 +70,7 @@ def generate_site(input_path, output_dir, base_url="", project_name=None,
                          depth_map, meta, belief_summaries)
     _render_sitemap(output_dir, nodes, topics, base_url)
     _render_robots_txt(output_dir, base_url)
-    _render_llms_txt(output_dir, meta, nodes, topics)
+    _render_llms_txt(output_dir, meta, nodes, topics, directory_root)
 
     in_count = sum(1 for n in nodes.values() if n.get("truth_value") == "IN")
     out_count = len(nodes) - in_count
@@ -428,7 +429,7 @@ def _render_robots_txt(output_dir, base_url):
         f.write("\n".join(lines) + "\n")
 
 
-def _render_llms_txt(output_dir, meta, nodes, topics):
+def _render_llms_txt(output_dir, meta, nodes, topics, directory_root=None):
     name = meta.get("project_name", "Belief Network")
     in_count = sum(1 for n in nodes.values() if n.get("truth_value") == "IN")
     out_count = len(nodes) - in_count
@@ -440,6 +441,17 @@ def _render_llms_txt(output_dir, meta, nodes, topics):
         f"This site contains {len(nodes)} beliefs ({in_count} IN, {out_count} OUT) "
         f"organized as a justified belief network.",
         "",
+    ]
+
+    if directory_root:
+        lines.extend([
+            "## Other Wikis",
+            "",
+            f"This is one of several belief wikis. See {directory_root} for the full directory.",
+            "",
+        ])
+
+    lines.extend([
         "## Navigation",
         "",
         "- `/` — Index with topic list and statistics",
@@ -458,7 +470,7 @@ def _render_llms_txt(output_dir, meta, nodes, topics):
         "that depend on it are automatically retracted (truth maintenance).",
         "",
         "Built with ftl-reasons (https://github.com/benthomasson/ftl-reasons).",
-    ]
+    ])
 
     with open(os.path.join(output_dir, "llms.txt"), "w") as f:
         f.write("\n".join(lines) + "\n")

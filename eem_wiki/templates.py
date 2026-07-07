@@ -32,6 +32,7 @@ BASE_TEMPLATE = """\
 <body>
   <main class="container">
     <nav>
+      {% if directory_root %}<a href="{{ root }}{{ directory_root }}">All Wikis</a> &rsaquo; {% endif %}
       <a href="{{ root }}">Home</a>
       {% block nav %}{% endblock %}
     </nav>

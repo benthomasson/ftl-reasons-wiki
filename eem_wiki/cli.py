@@ -30,13 +30,24 @@ def cli():
               help="Concurrent LLM workers (default: 0 = sequential)")
 @click.option("--no-topic-cache", is_flag=True, default=False,
               help="Force fresh LLM topic classification (ignore cache)")
+@click.option("--topics-only", is_flag=True, default=False,
+              help="Use LLM for topics but skip all summaries")
+@click.option("--skip-belief-summaries", is_flag=True, default=False,
+              help="Use LLM for topics and topic summaries, skip belief summaries")
 def build(input_path, output_dir, base_url, project_name, model, timeout,
-          parallel, no_topic_cache):
+          parallel, no_topic_cache, topics_only, skip_belief_summaries):
     """Generate static wiki from a network.json export."""
+    if skip_belief_summaries:
+        topics_only_val = "with-summaries"
+    elif topics_only:
+        topics_only_val = True
+    else:
+        topics_only_val = False
     stats = generate_site(input_path, output_dir,
                           base_url=base_url, project_name=project_name,
                           model=model, timeout=timeout, parallel=parallel,
-                          no_topic_cache=no_topic_cache)
+                          no_topic_cache=no_topic_cache,
+                          topics_only=topics_only_val)
     click.echo(f"Generated {stats['beliefs']} belief pages, "
                f"{stats['topics']} topic pages")
     click.echo(f"Output: {output_dir}/")

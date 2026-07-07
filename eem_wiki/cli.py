@@ -35,8 +35,11 @@ def cli():
               help="Use LLM for topics but skip all summaries")
 @click.option("--skip-belief-summaries", is_flag=True, default=False,
               help="Use LLM for topics and topic summaries, skip belief summaries")
+@click.option("--summaries-dir", default=None, type=click.Path(),
+              help="Directory for committable summary JSON files")
 def build(input_path, output_dir, base_url, project_name, model, timeout,
-          parallel, no_topic_cache, topics_only, skip_belief_summaries):
+          parallel, no_topic_cache, topics_only, skip_belief_summaries,
+          summaries_dir):
     """Generate static wiki from a network.json export."""
     if skip_belief_summaries:
         topics_only_val = "with-summaries"
@@ -48,7 +51,8 @@ def build(input_path, output_dir, base_url, project_name, model, timeout,
                           base_url=base_url, project_name=project_name,
                           model=model, timeout=timeout, parallel=parallel,
                           no_topic_cache=no_topic_cache,
-                          topics_only=topics_only_val)
+                          topics_only=topics_only_val,
+                          summaries_dir=summaries_dir)
     click.echo(f"Generated {stats['beliefs']} belief pages, "
                f"{stats['topics']} topic pages")
     click.echo(f"Output: {output_dir}/")
@@ -73,8 +77,11 @@ def build(input_path, output_dir, base_url, project_name, model, timeout,
               help="Use LLM for topics but skip all summaries")
 @click.option("--skip-belief-summaries", is_flag=True, default=False,
               help="Use LLM for topics and topic summaries, skip belief summaries")
+@click.option("--summaries-dir", default="summaries", type=click.Path(),
+              help="Base directory for summary JSON files (default: summaries/)")
 def build_all(config_path, output_dir, base_url, model, timeout, parallel,
-              no_topic_cache, topics_only, skip_belief_summaries):
+              no_topic_cache, topics_only, skip_belief_summaries,
+              summaries_dir):
     """Build multiple wikis from a config file."""
     config_dir = os.path.dirname(os.path.abspath(config_path))
     with open(config_path) as f:
@@ -87,6 +94,9 @@ def build_all(config_path, output_dir, base_url, model, timeout, parallel,
     else:
         topics_only_val = False
 
+    if not os.path.isabs(summaries_dir):
+        summaries_dir = os.path.join(config_dir, summaries_dir)
+
     base = base_url.rstrip("/")
     all_stats = []
 
@@ -98,6 +108,7 @@ def build_all(config_path, output_dir, base_url, model, timeout, parallel,
 
         wiki_output = os.path.join(output_dir, name)
         wiki_base = f"{base}/{name}" if base else ""
+        wiki_summaries = os.path.join(summaries_dir, name)
 
         click.echo(f"\nBuilding {name}...")
         stats = generate_site(
@@ -107,7 +118,8 @@ def build_all(config_path, output_dir, base_url, model, timeout, parallel,
             model=model, timeout=timeout, parallel=parallel,
             no_topic_cache=no_topic_cache,
             topics_only=topics_only_val,
-            directory_root="../")
+            directory_root="../",
+            summaries_dir=wiki_summaries)
 
         stats["name"] = name
         stats["project_name"] = entry.get("project_name", "")

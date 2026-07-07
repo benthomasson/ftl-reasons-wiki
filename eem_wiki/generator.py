@@ -1,6 +1,5 @@
 """Core generator: read network.json → render HTML files."""
 
-import hashlib
 import json
 import os
 from collections import defaultdict
@@ -13,7 +12,7 @@ from .topics import assign_topics
 
 def generate_site(input_path, output_dir, base_url="", project_name=None,
                    model=None, timeout=300, parallel=0, no_topic_cache=False,
-                   topics_only=False, directory_root=None):
+                   topics_only=False, directory_root=None, summaries_dir=None):
     """Generate the full static site from a network.json export.
 
     Args:
@@ -45,19 +44,23 @@ def generate_site(input_path, output_dir, base_url="", project_name=None,
     node_topic = _build_node_topic_map(topics)
     depth_map = _compute_depths(nodes)
 
-    summary_cache = _load_summary_cache(output_dir)
+    saved_topic_sums, saved_belief_sums = _load_summaries(summaries_dir)
     topic_summaries = {}
     belief_summaries = {}
     if model:
         if not topics_only:
             topic_summaries = _generate_topic_summaries(
-                topics, nodes, model, timeout, parallel, summary_cache)
+                topics, nodes, model, timeout, parallel, saved_topic_sums)
             belief_summaries = _generate_belief_summaries(
-                nodes, model, timeout, parallel, summary_cache)
+                nodes, model, timeout, parallel, saved_belief_sums)
         elif topics_only == "with-summaries":
             topic_summaries = _generate_topic_summaries(
-                topics, nodes, model, timeout, parallel, summary_cache)
-    _save_summary_cache(output_dir, summary_cache)
+                topics, nodes, model, timeout, parallel, saved_topic_sums)
+    elif summaries_dir:
+        topic_summaries = saved_topic_sums
+        belief_summaries = saved_belief_sums
+    if summaries_dir:
+        _save_summaries(summaries_dir, saved_topic_sums, saved_belief_sums)
 
     env = build_jinja_env()
     env.globals["directory_root"] = directory_root or ""
@@ -130,79 +133,84 @@ def _compute_depths(nodes):
     return depths
 
 
-def _topic_cache_key(topic, nids, nodes):
-    parts = []
-    for nid in sorted(nids):
-        text = (nodes.get(nid, {}).get("text") or "")
-        parts.append(f"{nid}:{text}")
-    return hashlib.sha256(f"topic:{topic}:{'|'.join(parts)}".encode()).hexdigest()
+def _load_summaries(summaries_dir):
+    """Load topic and belief summaries from named JSON files."""
+    if not summaries_dir:
+        return {}, {}
+    topic_path = os.path.join(summaries_dir, "topic-summaries.json")
+    belief_path = os.path.join(summaries_dir, "belief-summaries.json")
+    topic_sums = {}
+    belief_sums = {}
+    if os.path.exists(topic_path):
+        try:
+            with open(topic_path) as f:
+                topic_sums = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    if os.path.exists(belief_path):
+        try:
+            with open(belief_path) as f:
+                belief_sums = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return topic_sums, belief_sums
 
 
-def _belief_cache_key(nid, node):
-    text = (node.get("text") or "")
-    tv = (node.get("truth_value") or "")
-    return hashlib.sha256(f"belief:{nid}:{tv}:{text}".encode()).hexdigest()
-
-
-def _load_summary_cache(output_dir):
-    path = os.path.join(output_dir, ".summary_cache.json")
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def _save_summary_cache(output_dir, cache):
-    if not cache:
+def _save_summaries(summaries_dir, topic_sums, belief_sums):
+    """Write topic and belief summaries as sorted JSON for clean diffs."""
+    if not summaries_dir:
         return
-    os.makedirs(output_dir, exist_ok=True)
-    path = os.path.join(output_dir, ".summary_cache.json")
-    with open(path, "w") as f:
-        json.dump(cache, f, indent=2)
+    os.makedirs(summaries_dir, exist_ok=True)
+    if topic_sums:
+        with open(os.path.join(summaries_dir, "topic-summaries.json"), "w") as f:
+            json.dump(topic_sums, f, indent=2, sort_keys=True,
+                      ensure_ascii=False)
+            f.write("\n")
+    if belief_sums:
+        with open(os.path.join(summaries_dir, "belief-summaries.json"), "w") as f:
+            json.dump(belief_sums, f, indent=2, sort_keys=True,
+                      ensure_ascii=False)
+            f.write("\n")
 
 
 def _generate_topic_summaries(topics, nodes, model, timeout, parallel,
-                              cache):
+                              saved):
     import sys
     from .summarize import summarize_topic
 
     summaries = {}
     needed = []
     for topic, nids in topics.items():
-        key = _topic_cache_key(topic, nids, nodes)
-        if key in cache:
-            summaries[topic] = cache[key]
+        if topic in saved:
+            summaries[topic] = saved[topic]
         else:
-            needed.append((topic, nids, key))
+            needed.append((topic, nids))
 
-    cached = len(topics) - len(needed)
-    if cached:
-        print(f"Topic summaries: {cached} cached, {len(needed)} to generate",
+    loaded = len(topics) - len(needed)
+    if loaded:
+        print(f"Topic summaries: {loaded} loaded, {len(needed)} to generate",
               file=sys.stderr)
     if not needed:
         return summaries
 
     print(f"Generating {len(needed)} topic summaries...", file=sys.stderr)
 
-    def _do_topic(topic, nids, key):
+    def _do_topic(topic, nids):
         beliefs = [
             {"id": nid, "text": nodes.get(nid, {}).get("text", ""),
              "truth_value": nodes.get(nid, {}).get("truth_value", "?")}
             for nid in nids
         ]
         result = summarize_topic(topic, beliefs, model, timeout)
-        cache[key] = result
+        saved[topic] = result
         return result
 
     if parallel > 0:
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=parallel) as executor:
             futures = {
-                executor.submit(_do_topic, t, n, k): t
-                for t, n, k in needed
+                executor.submit(_do_topic, t, n): t
+                for t, n in needed
             }
             for future in as_completed(futures):
                 topic = futures[future]
@@ -213,11 +221,11 @@ def _generate_topic_summaries(topics, nodes, model, timeout, parallel,
                     print(f"  WARN: topic '{topic}' failed: {e}",
                           file=sys.stderr)
     else:
-        for i, (topic, nids, key) in enumerate(needed, 1):
+        for i, (topic, nids) in enumerate(needed, 1):
             print(f"  Summarizing topic {i}/{len(needed)}: {topic}...",
                   file=sys.stderr)
             try:
-                summaries[topic] = _do_topic(topic, nids, key)
+                summaries[topic] = _do_topic(topic, nids)
             except Exception as e:
                 print(f"  WARN: topic '{topic}' failed: {e}",
                       file=sys.stderr)
@@ -225,39 +233,38 @@ def _generate_topic_summaries(topics, nodes, model, timeout, parallel,
     return summaries
 
 
-def _generate_belief_summaries(nodes, model, timeout, parallel, cache):
+def _generate_belief_summaries(nodes, model, timeout, parallel, saved):
     import sys
     from .summarize import summarize_belief
 
     summaries = {}
     needed = []
     for nid, node in nodes.items():
-        key = _belief_cache_key(nid, node)
-        if key in cache:
-            summaries[nid] = cache[key]
+        if nid in saved:
+            summaries[nid] = saved[nid]
         else:
-            needed.append((nid, node, key))
+            needed.append((nid, node))
 
-    cached = len(nodes) - len(needed)
-    if cached:
-        print(f"Belief summaries: {cached} cached, {len(needed)} to generate",
+    loaded = len(nodes) - len(needed)
+    if loaded:
+        print(f"Belief summaries: {loaded} loaded, {len(needed)} to generate",
               file=sys.stderr)
     if not needed:
         return summaries
 
     print(f"Generating {len(needed)} belief summaries...", file=sys.stderr)
 
-    def _do_belief(nid, node, key):
+    def _do_belief(nid, node):
         result = summarize_belief(nid, node, nodes, model, timeout)
-        cache[key] = result
+        saved[nid] = result
         return result
 
     if parallel > 0:
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=parallel) as executor:
             futures = {
-                executor.submit(_do_belief, n, nd, k): n
-                for n, nd, k in needed
+                executor.submit(_do_belief, n, nd): n
+                for n, nd in needed
             }
             done = 0
             for future in as_completed(futures):
@@ -272,12 +279,12 @@ def _generate_belief_summaries(nodes, model, timeout, parallel, cache):
                     print(f"  WARN: belief '{nid}' failed: {e}",
                           file=sys.stderr)
     else:
-        for i, (nid, node, key) in enumerate(needed, 1):
+        for i, (nid, node) in enumerate(needed, 1):
             if i % 50 == 0:
                 print(f"  Summarizing belief {i}/{len(needed)}...",
                       file=sys.stderr)
             try:
-                summaries[nid] = _do_belief(nid, node, key)
+                summaries[nid] = _do_belief(nid, node)
             except Exception as e:
                 print(f"  WARN: belief '{nid}' failed: {e}",
                       file=sys.stderr)

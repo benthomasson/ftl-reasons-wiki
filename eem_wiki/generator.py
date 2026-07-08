@@ -353,11 +353,13 @@ def _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
         justifications = []
         for j in node.get("justifications", []):
             ant_details = [
-                (aid, nodes.get(aid, {}).get("text", ""))
+                (aid, nodes.get(aid, {}).get("text", ""),
+                 nodes.get(aid, {}).get("truth_value", "?"))
                 for aid in j.get("antecedents", [])
             ]
             out_details = [
-                (oid, nodes.get(oid, {}).get("text", ""))
+                (oid, nodes.get(oid, {}).get("text", ""),
+                 nodes.get(oid, {}).get("truth_value", "?"))
                 for oid in j.get("outlist", [])
             ]
             justifications.append({
@@ -371,9 +373,12 @@ def _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
 
         dep_ids = sorted(dependents.get(nid, set()))
         dep_details = [
-            (did, nodes.get(did, {}).get("text", ""))
+            (did, nodes.get(did, {}).get("text", ""),
+             nodes.get(did, {}).get("truth_value", "?"))
             for did in dep_ids
         ]
+
+        retract_reason = node.get("metadata", {}).get("retract_reason", "")
 
         is_premise = not node.get("justifications")
         topic = node_topic.get(nid, "other")
@@ -400,6 +405,7 @@ def _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
             reviewed_at=node.get("reviewed_at", ""),
             verified_at=node.get("verified_at", ""),
             summary=summaries.get(nid, ""),
+            retract_reason=retract_reason,
         )
         with open(os.path.join(belief_dir, "index.html"), "w") as f:
             f.write(html)

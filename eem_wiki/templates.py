@@ -120,6 +120,10 @@ BELIEF_TEMPLATE = """\
   {% else %} <span class="tag">derived{% if depth %} (depth {{ depth }}){% endif %}</span>
   {% endif %}</p>
 
+  {% if retract_reason %}
+  <p><strong>Reason OUT:</strong> {{ retract_reason }}</p>
+  {% endif %}
+
   <blockquote>{{ text }}</blockquote>
 
   {% if summary %}
@@ -137,8 +141,9 @@ BELIEF_TEMPLATE = """\
     {% if j.antecedents %}
     <p><strong>Antecedents</strong> (all must be IN):</p>
     <ul>
-    {% for ant_id, ant_text in j.ant_details %}
-      <li><a href="{{ root }}belief/{{ ant_id }}/" class="belief-id">{{ ant_id }}</a>
+    {% for ant_id, ant_text, ant_tv in j.ant_details %}
+      <li><span class="tag {{ 'tag-in' if ant_tv == 'IN' else 'tag-out' }}">{{ ant_tv }}</span>
+        <a href="{{ root }}belief/{{ ant_id }}/" class="belief-id">{{ ant_id }}</a>
         — {{ ant_text }}</li>
     {% endfor %}
     </ul>
@@ -146,8 +151,9 @@ BELIEF_TEMPLATE = """\
     {% if j.outlist %}
     <p><strong>Unless</strong> (any of these IN defeats this justification):</p>
     <ul>
-    {% for out_id, out_text in j.out_details %}
-      <li><a href="{{ root }}belief/{{ out_id }}/" class="belief-id">{{ out_id }}</a>
+    {% for out_id, out_text, out_tv in j.out_details %}
+      <li><span class="tag {{ 'tag-in' if out_tv == 'IN' else 'tag-out' }}">{{ out_tv }}</span>
+        <a href="{{ root }}belief/{{ out_id }}/" class="belief-id">{{ out_id }}</a>
         — {{ out_text }}</li>
     {% endfor %}
     </ul>
@@ -160,8 +166,9 @@ BELIEF_TEMPLATE = """\
   <h2>Dependents</h2>
   <p>These beliefs depend on this one:</p>
   <ul>
-  {% for dep_id, dep_text in dependents %}
-    <li><a href="{{ root }}belief/{{ dep_id }}/" class="belief-id">{{ dep_id }}</a>
+  {% for dep_id, dep_text, dep_tv in dependents %}
+    <li><span class="tag {{ 'tag-in' if dep_tv == 'IN' else 'tag-out' }}">{{ dep_tv }}</span>
+      <a href="{{ root }}belief/{{ dep_id }}/" class="belief-id">{{ dep_id }}</a>
       — {{ dep_text }}</li>
   {% endfor %}
   </ul>

@@ -53,6 +53,12 @@ INDEX_TEMPLATE = """\
 
 <p>{{ in_count }} beliefs ({{ in_count - out_count }} IN, {{ out_count }} OUT)</p>
 
+{% if project_summary %}
+<section class="summary">
+{{ project_summary|paragraphs }}
+</section>
+{% endif %}
+
 <h2>Topics</h2>
 <table>
   <thead><tr><th>Topic</th><th>Beliefs</th></tr></thead>

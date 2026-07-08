@@ -44,9 +44,11 @@ def generate_site(input_path, output_dir, base_url="", project_name=None,
     node_topic = _build_node_topic_map(topics)
     depth_map = _compute_depths(nodes)
 
-    saved_topic_sums, saved_belief_sums = _load_summaries(summaries_dir)
+    saved_topic_sums, saved_belief_sums, saved_project_sum = _load_summaries(
+        summaries_dir)
     topic_summaries = {}
     belief_summaries = {}
+    project_summary = ""
     if model:
         if not topics_only:
             topic_summaries = _generate_topic_summaries(
@@ -56,18 +58,23 @@ def generate_site(input_path, output_dir, base_url="", project_name=None,
         elif topics_only == "with-summaries":
             topic_summaries = _generate_topic_summaries(
                 topics, nodes, model, timeout, parallel, saved_topic_sums)
+        project_summary = _generate_project_summary(
+            meta.get("project_name", "Belief Wiki"), nodes, topics,
+            model, timeout, saved_project_sum)
     elif summaries_dir:
         topic_summaries = saved_topic_sums
         belief_summaries = saved_belief_sums
+        project_summary = saved_project_sum
     if summaries_dir:
-        _save_summaries(summaries_dir, saved_topic_sums, saved_belief_sums)
+        _save_summaries(summaries_dir, saved_topic_sums, saved_belief_sums,
+                        project_summary)
 
     env = build_jinja_env()
     env.globals["directory_root"] = directory_root or ""
 
     os.makedirs(output_dir, exist_ok=True)
 
-    _render_index(env, output_dir, meta, nodes, topics)
+    _render_index(env, output_dir, meta, nodes, topics, project_summary)
     _render_topic_pages(env, output_dir, nodes, topics, topic_summaries)
     _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
                          depth_map, meta, belief_summaries)
@@ -134,13 +141,15 @@ def _compute_depths(nodes):
 
 
 def _load_summaries(summaries_dir):
-    """Load topic and belief summaries from named JSON files."""
+    """Load topic, belief, and project summaries from named files."""
     if not summaries_dir:
-        return {}, {}
+        return {}, {}, ""
     topic_path = os.path.join(summaries_dir, "topic-summaries.json")
     belief_path = os.path.join(summaries_dir, "belief-summaries.json")
+    project_path = os.path.join(summaries_dir, "project-summary.txt")
     topic_sums = {}
     belief_sums = {}
+    project_sum = ""
     if os.path.exists(topic_path):
         try:
             with open(topic_path) as f:
@@ -153,11 +162,17 @@ def _load_summaries(summaries_dir):
                 belief_sums = json.load(f)
         except (json.JSONDecodeError, OSError):
             pass
-    return topic_sums, belief_sums
+    if os.path.exists(project_path):
+        try:
+            with open(project_path) as f:
+                project_sum = f.read().strip()
+        except OSError:
+            pass
+    return topic_sums, belief_sums, project_sum
 
 
-def _save_summaries(summaries_dir, topic_sums, belief_sums):
-    """Write topic and belief summaries as sorted JSON for clean diffs."""
+def _save_summaries(summaries_dir, topic_sums, belief_sums, project_sum=""):
+    """Write topic, belief, and project summaries for clean diffs."""
     if not summaries_dir:
         return
     os.makedirs(summaries_dir, exist_ok=True)
@@ -171,6 +186,22 @@ def _save_summaries(summaries_dir, topic_sums, belief_sums):
             json.dump(belief_sums, f, indent=2, sort_keys=True,
                       ensure_ascii=False)
             f.write("\n")
+    if project_sum:
+        with open(os.path.join(summaries_dir, "project-summary.txt"), "w") as f:
+            f.write(project_sum + "\n")
+
+
+def _generate_project_summary(project_name, nodes, topics, model, timeout,
+                              saved):
+    if saved:
+        import sys
+        print("Project summary: loaded from cache", file=sys.stderr)
+        return saved
+
+    import sys
+    from .summarize import summarize_project
+    print("Generating project summary...", file=sys.stderr)
+    return summarize_project(project_name, nodes, topics, model, timeout)
 
 
 def _generate_topic_summaries(topics, nodes, model, timeout, parallel,
@@ -292,7 +323,8 @@ def _generate_belief_summaries(nodes, model, timeout, parallel, saved):
     return summaries
 
 
-def _render_index(env, output_dir, meta, nodes, topics):
+def _render_index(env, output_dir, meta, nodes, topics,
+                  project_summary=""):
     tmpl = env.get_template("index.html")
     in_count = len(nodes)
     out_count = sum(1 for n in nodes.values() if n.get("truth_value") == "OUT")
@@ -306,6 +338,7 @@ def _render_index(env, output_dir, meta, nodes, topics):
         in_count=in_count,
         out_count=out_count,
         topics=topics,
+        project_summary=project_summary,
     )
     with open(os.path.join(output_dir, "index.html"), "w") as f:
         f.write(html)

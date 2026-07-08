@@ -43,6 +43,72 @@ Claim: {text}
 {context}"""
 
 
+PROJECT_SUMMARY_PROMPT = """\
+You are writing an overview summary for a belief network wiki called "{project_name}".
+
+This knowledge base contains {total_beliefs} beliefs ({in_count} IN, {out_count} OUT) \
+organized into {topic_count} topics by a Truth Maintenance System (TMS).
+
+Write a 3-5 paragraph summary that:
+1. Explains what this knowledge base is about — what domain does it cover?
+2. Highlights the major themes and what the network has discovered
+3. Notes the scale and structure — how many topics, what kinds of beliefs (premises vs derived)
+4. Mentions what OUT (retracted) beliefs tell us about how understanding has evolved
+5. Gives a reader a sense of why this knowledge base is valuable
+
+Write in clear, direct prose for someone encountering this wiki for the first time. \
+Do not list every topic — synthesize the big picture.
+
+Output plain text paragraphs only. Do not use markdown formatting — no headers, \
+no bullet lists, no bold/italic. Separate paragraphs with blank lines.
+
+## Topics and their sizes
+
+{topic_list}
+
+## Sample beliefs (for flavor)
+
+{sample_beliefs}"""
+
+
+def summarize_project(project_name, nodes, topics, model, timeout):
+    """Generate an LLM summary for the project index page."""
+    from reasons.llm import invoke_model
+
+    in_count = sum(1 for n in nodes.values() if n.get("truth_value") == "IN")
+    out_count = len(nodes) - in_count
+
+    topic_lines = []
+    for topic, nids in sorted(topics.items(), key=lambda x: -len(x[1])):
+        topic_lines.append(f"- {topic} ({len(nids)} beliefs)")
+
+    samples = []
+    import random
+    rng = random.Random(42)
+    all_ids = list(nodes.keys())
+    for nid in rng.sample(all_ids, min(20, len(all_ids))):
+        node = nodes[nid]
+        tv = node.get("truth_value", "?")
+        samples.append(f"- [{tv}] {nid}: {node.get('text', '')[:150]}")
+
+    prompt = PROJECT_SUMMARY_PROMPT.format(
+        project_name=project_name,
+        total_beliefs=len(nodes),
+        in_count=in_count,
+        out_count=out_count,
+        topic_count=len(topics),
+        topic_list="\n".join(topic_lines),
+        sample_beliefs="\n".join(samples),
+    )
+
+    try:
+        return invoke_model(prompt, model=model, timeout=timeout)
+    except Exception as e:
+        import sys
+        print(f"  WARN: project summary failed: {e}", file=sys.stderr)
+        return ""
+
+
 def summarize_topic(topic, beliefs, model, timeout):
     """Generate an LLM summary for a topic page.
 

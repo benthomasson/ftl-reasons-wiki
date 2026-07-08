@@ -222,7 +222,19 @@ GLOSSARY_TEMPLATE = """\
 
 <p>This wiki is generated from a <strong>justified belief network</strong> managed by a
 <a href="https://github.com/benthomasson/ftl-reasons">Truth Maintenance System</a> (TMS).
+Every belief on this site is a justified claim with an inspectable &ldquo;why.&rdquo;
+Beliefs that have been abandoned are graves you can visit, not pages that vanish &mdash;
+the record of what was believed and why it was given up is itself knowledge.
 The following terms explain how to read belief pages.</p>
+
+<h2 id="premise-derived">Premise vs. Derived</h2>
+<ul>
+  <li>A <strong>premise</strong> is a direct observation or assertion with no justification chain.
+    It is IN by default and can only go OUT if explicitly retracted.</li>
+  <li>A <strong>derived belief</strong> is supported by one or more justifications that reference
+    other beliefs (see <a href="#justifications">Justifications</a> below). Its truth value is
+    computed automatically from the network.</li>
+</ul>
 
 <h2 id="in-out">IN and OUT</h2>
 <p>Every belief has a truth value: <span class="tag tag-in">IN</span> or
@@ -241,16 +253,8 @@ The following terms explain how to read belief pages.</p>
         Reason OUT label; the cause is visible in their justification chain (one or more
         antecedents will be OUT).</li>
     </ul>
-    OUT beliefs are retained in the network &mdash; they are graves you can visit, not pages
-    that vanish.</li>
-</ul>
-
-<h2 id="premise-derived">Premise vs. Derived</h2>
-<ul>
-  <li>A <strong>premise</strong> is a direct observation or assertion with no justification chain.
-    It is IN by default and can only go OUT if explicitly retracted.</li>
-  <li>A <strong>derived belief</strong> is supported by one or more justifications that reference
-    other beliefs. Its truth value is computed automatically from the network.</li>
+    OUT beliefs are retained in the network rather than deleted. The record of what was
+    believed and why it was given up is itself knowledge.</li>
 </ul>
 
 <h2 id="well-foundedness">Well-Foundedness</h2>
@@ -261,16 +265,19 @@ ensures that every IN belief traces back to at least one direct observation or a
 
 <h2 id="depth">Depth</h2>
 <p>Depth measures how far a derived belief is from the premises it rests on. Depth 0 is a
-premise. Depth 1 means the belief is derived directly from premises. When a belief has
-multiple justifications with different chain lengths, depth reflects the <em>longest</em>
-chain (maximum over all antecedents across all justifications). Higher depth means more
-reasoning steps between this belief and the observations it ultimately depends on &mdash;
-more inferential distance, but also more points where the chain could break.</p>
+premise. Depth 1 means the belief is derived directly from premises. Depth 2 means it
+depends on a depth-1 belief, and so on. When a belief has multiple justifications with
+different chain lengths, depth reflects the <em>longest</em> chain (maximum over all
+antecedents across all justifications). Higher depth means more reasoning steps between
+this belief and the observations it ultimately depends on &mdash; more inferential distance,
+but also more points where the chain could break.</p>
 
 <h2 id="justifications">Justifications</h2>
 <p>A justification is a rule that says: &ldquo;this belief is IN <em>if</em> all its
 <strong>antecedents</strong> are IN <em>and</em> none of its <strong>unless</strong> (outlist)
-nodes are IN.&rdquo; This is called an SL (Support List) justification.</p>
+nodes are IN.&rdquo; This is called an SL (Support List) justification &mdash; the term
+comes from <a href="https://en.wikipedia.org/wiki/Reason_maintenance">Doyle&rsquo;s 1979
+truth maintenance system</a>.</p>
 <ul>
   <li><strong>Antecedents</strong> &mdash; beliefs that must all be IN for this justification to hold.
     If any antecedent goes OUT, the justified belief goes OUT too (unless another justification
@@ -291,7 +298,9 @@ converted to a justified node with the challenge in its outlist.</p>
 <p>A <strong>defense</strong> counters a challenge using the same mechanism in reverse: it
 places the challenge in <em>its own</em> outlist, creating a dialectical structure. Since
 the defense is IN by default, the challenge goes OUT, which removes it as a defeater and
-restores the original belief.</p>
+restores the original belief. Because a defense is itself a belief, it can be challenged
+in turn &mdash; the structure recurses arbitrarily, producing chains of challenge, defense,
+counter-challenge, and so on.</p>
 
 <h2 id="nogoods">Nogoods and Dependency-Directed Backtracking</h2>
 <p>A <strong>nogood</strong> is a recorded contradiction &mdash; a set of beliefs that cannot
@@ -310,6 +319,17 @@ until all truth values are consistent.</p>
 <p>Only explicitly retracted beliefs show a <strong>Reason OUT</strong> on their wiki page.
 Cascade-OUT beliefs have no Reason OUT &mdash; instead, you can trace the cause by following
 their justification chain until you find the antecedent that went OUT.</p>
+
+<h2 id="reading-a-belief-page">Reading a Belief Page</h2>
+<p>Each belief page is laid out top to bottom: the status line
+(<span class="tag tag-in">IN</span> or <span class="tag tag-out">OUT</span>,
+premise or derived with depth, and source provenance), optional dates, the
+<strong>Reason OUT</strong> if explicitly retracted, the canonical belief text as a
+blockquote, a plain-language <strong>Summary</strong>, then the graph edges &mdash;
+<strong>Justifications</strong> upward (antecedents and unless nodes, each with their own
+truth value tags), optional <strong>Challenges</strong>, and
+<strong>Dependents</strong> downward (beliefs that cite this one). Every linked belief is
+clickable, so you can walk the justification graph in either direction.</p>
 
 <h2 id="provenance">Provenance</h2>
 <p>Belief pages show provenance metadata when available: the <strong>source</strong> (where

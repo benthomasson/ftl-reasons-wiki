@@ -153,6 +153,9 @@ BELIEF_TEMPLATE = """\
 
   {% if justifications %}
   <h2>Justifications</h2>
+  {% if justifications|length > 1 %}
+  <p>This belief has {{ justifications|length }} justifications &mdash; it is IN if <em>any one</em> holds.</p>
+  {% endif %}
   {% for j in justifications %}
   <details open>
     <summary>{{ j.type }}{% if j.label %} &mdash; {{ j.label }}{% endif %}</summary>

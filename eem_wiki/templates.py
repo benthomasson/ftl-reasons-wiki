@@ -24,6 +24,7 @@ BASE_TEMPLATE = """\
     .belief-id { font-family: var(--pico-font-family-monospace); font-size: 0.9em; }
     .meta-table { font-size: 0.9em; }
     .meta-table td:first-child { font-weight: 600; white-space: nowrap; padding-right: 1em; }
+    .dates { font-size: 0.85em; color: var(--pico-muted-color); margin-top: -0.5em; }
     nav { margin-bottom: 1em; }
     footer { margin-top: 2em; font-size: 0.85em; color: var(--pico-muted-color); }
   </style>
@@ -34,6 +35,7 @@ BASE_TEMPLATE = """\
     <nav>
       {% if directory_root %}<a href="{{ root }}{{ directory_root }}">All Wikis</a> &rsaquo; {% endif %}
       <a href="{{ root }}">Home</a>
+      &middot; <a href="{{ root }}glossary/">Glossary</a>
       {% block nav %}{% endblock %}
     </nav>
     {% block content %}{% endblock %}
@@ -124,7 +126,17 @@ BELIEF_TEMPLATE = """\
   <p><span class="tag {{ 'tag-in' if truth_value == 'IN' else 'tag-out' }}">{{ truth_value }}</span>
   {% if is_premise %} <span class="tag">premise</span>
   {% else %} <span class="tag">derived{% if depth %} (depth {{ depth }}){% endif %}</span>
-  {% endif %}</p>
+  {% endif %}
+  {% if source %} &mdash; {% if source_url %}<a href="{{ source_url }}">{{ source }}</a>{% else %}{{ source }}{% endif %}{% endif %}
+  </p>
+
+  {% if created_at or reviewed_at or verified_at %}
+  <p class="dates">
+    {% if created_at %}Created {{ created_at }}{% endif %}
+    {% if reviewed_at %}{% if created_at %} · {% endif %}Reviewed {{ reviewed_at }}{% endif %}
+    {% if verified_at %}{% if created_at or reviewed_at %} · {% endif %}Verified {{ verified_at }}{% endif %}
+  </p>
+  {% endif %}
 
   {% if retract_reason %}
   <p><strong>Reason OUT:</strong> {{ retract_reason }}</p>
@@ -135,7 +147,7 @@ BELIEF_TEMPLATE = """\
   {% if summary %}
   <section class="summary">
   <h2>Summary</h2>
-  <p>{{ summary }}</p>
+  {{ summary|paragraphs }}
   </section>
   {% endif %}
 
@@ -168,6 +180,24 @@ BELIEF_TEMPLATE = """\
   {% endfor %}
   {% endif %}
 
+  {% if challenges %}
+  <h2>Challenges</h2>
+  <p>{{ challenges|length }} challenge{{ 's' if challenges|length != 1 else '' }}
+    ({{ challenges|selectattr('truth_value', 'eq', 'IN')|list|length }} active,
+     {{ challenges|selectattr('truth_value', 'eq', 'OUT')|list|length }} defeated)</p>
+  <ul>
+  {% for c in challenges %}
+    <li><span class="tag {{ 'tag-in' if c.truth_value == 'IN' else 'tag-out' }}">{{ c.truth_value }}</span>
+      <a href="{{ root }}belief/{{ c.id }}/" class="belief-id">{{ c.id }}</a>
+      — {{ c.text }}
+      {% if c.defense %}
+        &mdash; defeated by <a href="{{ root }}belief/{{ c.defense }}/" class="belief-id">{{ c.defense }}</a>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+
   {% if dependents %}
   <h2>Dependents</h2>
   <p>These beliefs depend on this one:</p>
@@ -179,15 +209,82 @@ BELIEF_TEMPLATE = """\
   {% endfor %}
   </ul>
   {% endif %}
-
-  <h2>Details</h2>
-  <table class="meta-table">
-    {% if source %}<tr><td>Source</td><td>{% if source_url %}<a href="{{ source_url }}">{{ source }}</a>{% else %}{{ source }}{% endif %}</td></tr>{% endif %}
-    {% if created_at %}<tr><td>Created</td><td>{{ created_at }}</td></tr>{% endif %}
-    {% if reviewed_at %}<tr><td>Reviewed</td><td>{{ reviewed_at }}</td></tr>{% endif %}
-    {% if verified_at %}<tr><td>Verified</td><td>{{ verified_at }}</td></tr>{% endif %}
-  </table>
 </article>
+{% endblock %}
+"""
+
+
+GLOSSARY_TEMPLATE = """\
+{% extends "base.html" %}
+{% block nav %} &rsaquo; Glossary{% endblock %}
+{% block content %}
+<h1>Glossary</h1>
+
+<p>This wiki is generated from a <strong>justified belief network</strong> managed by a
+<a href="https://github.com/benthomasson/ftl-reasons">Truth Maintenance System</a> (TMS).
+The following terms explain how to read belief pages.</p>
+
+<h2 id="in-out">IN and OUT</h2>
+<p>Every belief has a truth value: <span class="tag tag-in">IN</span> or
+<span class="tag tag-out">OUT</span>.</p>
+<ul>
+  <li><strong>IN</strong> means the belief is currently justified — its supporting evidence
+    holds and no active defeater contradicts it. IN does not mean "proven true in all possible
+    worlds"; it means "supported by the current state of the network."</li>
+  <li><strong>OUT</strong> means the belief is <em>not currently justified</em>. This is not
+    the same as "false." A belief goes OUT when one of its antecedents is retracted, when a
+    defeater becomes active, or when it is explicitly retracted with a reason. OUT beliefs are
+    retained in the network — they are graves you can visit, not pages that vanish.</li>
+</ul>
+
+<h2 id="premise-derived">Premise vs. Derived</h2>
+<ul>
+  <li>A <strong>premise</strong> is a direct observation or assertion with no justification chain.
+    It is IN by default and can only go OUT if explicitly retracted.</li>
+  <li>A <strong>derived belief</strong> is supported by one or more justifications that reference
+    other beliefs. Its truth value is computed automatically from the network.</li>
+</ul>
+
+<h2 id="depth">Depth</h2>
+<p>Depth measures how far a derived belief is from its nearest premise. Depth 0 is a premise.
+Depth 1 means the belief is derived directly from premises. Depth 3 means there are three
+levels of reasoning between this belief and the premises it ultimately rests on. Higher depth
+means longer justification chains — more reasoning steps, but also more points where the
+chain could break.</p>
+
+<h2 id="justifications">Justifications</h2>
+<p>A justification is a rule that says: "this belief is IN <em>if</em> all its
+<strong>antecedents</strong> are IN <em>and</em> none of its <strong>unless</strong> (outlist)
+nodes are IN." This is called an SL (Support List) justification.</p>
+<ul>
+  <li><strong>Antecedents</strong> — beliefs that must all be IN for this justification to hold.
+    If any antecedent goes OUT, the justified belief goes OUT too (unless another justification
+    still supports it).</li>
+  <li><strong>Unless (outlist)</strong> — beliefs that defeat this justification if they become IN.
+    This is the non-monotonic reasoning mechanism: it allows the network to express "A is true
+    unless B" — default reasoning that can be overridden by new evidence.</li>
+</ul>
+<p>A belief can have multiple justifications. It stays IN as long as <em>at least one</em>
+justification is satisfied.</p>
+
+<h2 id="challenges">Challenges and Defenses</h2>
+<p>A <strong>challenge</strong> is a belief that contests another belief by adding itself to
+the target's outlist. When a challenge is IN, it defeats the target's justification — the
+target goes OUT. A <strong>defense</strong> counters a challenge by placing the challenge in
+<em>its</em> outlist, creating a dialectical structure: if the defense holds, the challenge
+goes OUT, and the original belief is restored.</p>
+
+<h2 id="retraction">Retraction and Cascades</h2>
+<p>When a belief is retracted, the system propagates the change: every belief that depended
+on the retracted belief is re-evaluated. If a derived belief has no remaining valid
+justification, it goes OUT too. This cascade continues through the network until all truth
+values are consistent. Retracted beliefs show a <strong>Reason OUT</strong> explaining why
+they were retracted.</p>
+
+<h2 id="topics">Topics</h2>
+<p>Beliefs are grouped into topics by an LLM classifier that reads each belief's text and
+assigns it to a semantic category. Topics are not part of the TMS data model — they are a
+navigational layer added by the wiki generator to make large networks browsable.</p>
 {% endblock %}
 """
 
@@ -236,6 +333,7 @@ def build_jinja_env():
         "index.html": INDEX_TEMPLATE,
         "topic.html": TOPIC_TEMPLATE,
         "belief.html": BELIEF_TEMPLATE,
+        "glossary.html": GLOSSARY_TEMPLATE,
         "directory.html": DIRECTORY_TEMPLATE,
     }
     env.loader = _DictLoader(templates)

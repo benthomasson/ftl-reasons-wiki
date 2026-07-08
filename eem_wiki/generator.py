@@ -78,6 +78,7 @@ def generate_site(input_path, output_dir, base_url="", project_name=None,
     _render_topic_pages(env, output_dir, nodes, topics, topic_summaries)
     _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
                          depth_map, meta, belief_summaries)
+    _render_glossary(env, output_dir)
     _render_sitemap(output_dir, nodes, topics, base_url)
     _render_robots_txt(output_dir, base_url)
     _render_llms_txt(output_dir, meta, nodes, topics, directory_root)
@@ -413,6 +414,22 @@ def _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
 
         retract_reason = node.get("metadata", {}).get("retract_reason", "")
 
+        challenge_ids = node.get("metadata", {}).get("challenges", [])
+        challenges = []
+        for cid in challenge_ids:
+            cnode = nodes.get(cid, {})
+            defense = None
+            for did, dnode in nodes.items():
+                if dnode.get("metadata", {}).get("defense_target") == cid:
+                    defense = did
+                    break
+            challenges.append({
+                "id": cid,
+                "text": cnode.get("text", ""),
+                "truth_value": cnode.get("truth_value", "?"),
+                "defense": defense,
+            })
+
         is_premise = not node.get("justifications")
         topic = node_topic.get(nid, "other")
         text = node.get("text", "")
@@ -430,6 +447,7 @@ def _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
             is_premise=is_premise,
             depth=depth_map.get(nid, 0),
             justifications=justifications,
+            challenges=challenges,
             dependents=dep_details,
             topic=topic,
             source=node.get("source", ""),
@@ -442,6 +460,21 @@ def _render_belief_pages(env, output_dir, nodes, dependents, node_topic,
         )
         with open(os.path.join(belief_dir, "index.html"), "w") as f:
             f.write(html)
+
+
+def _render_glossary(env, output_dir):
+    tmpl = env.get_template("glossary.html")
+    glossary_dir = os.path.join(output_dir, "glossary")
+    os.makedirs(glossary_dir, exist_ok=True)
+    html = tmpl.render(
+        title="Glossary",
+        description="How to read this belief wiki — IN/OUT, premises, justifications, and more",
+        canonical="",
+        root="../",
+        meta=None,
+    )
+    with open(os.path.join(glossary_dir, "index.html"), "w") as f:
+        f.write(html)
 
 
 def _render_sitemap(output_dir, nodes, topics, base_url):

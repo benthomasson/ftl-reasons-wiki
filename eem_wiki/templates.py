@@ -228,13 +228,21 @@ The following terms explain how to read belief pages.</p>
 <p>Every belief has a truth value: <span class="tag tag-in">IN</span> or
 <span class="tag tag-out">OUT</span>.</p>
 <ul>
-  <li><strong>IN</strong> means the belief is currently justified — its supporting evidence
-    holds and no active defeater contradicts it. IN does not mean "proven true in all possible
-    worlds"; it means "supported by the current state of the network."</li>
+  <li><strong>IN</strong> means the belief is currently justified &mdash; its supporting evidence
+    holds and no active defeater contradicts it. IN does not mean &ldquo;proven true in all possible
+    worlds&rdquo;; it means &ldquo;supported by the current state of the network.&rdquo;</li>
   <li><strong>OUT</strong> means the belief is <em>not currently justified</em>. This is not
-    the same as "false." A belief goes OUT when one of its antecedents is retracted, when a
-    defeater becomes active, or when it is explicitly retracted with a reason. OUT beliefs are
-    retained in the network — they are graves you can visit, not pages that vanish.</li>
+    the same as &ldquo;false.&rdquo; A belief goes OUT in two distinct ways:
+    <ul>
+      <li><strong>Explicit retraction</strong> &mdash; someone (a human or an agent) marks the belief
+        OUT with a stated reason. These beliefs show a <strong>Reason OUT</strong> on their page.</li>
+      <li><strong>Cascade</strong> &mdash; a belief the network depended on went OUT, and this
+        belief lost its last valid justification as a result. Cascade-OUT beliefs have no
+        Reason OUT label; the cause is visible in their justification chain (one or more
+        antecedents will be OUT).</li>
+    </ul>
+    OUT beliefs are retained in the network &mdash; they are graves you can visit, not pages
+    that vanish.</li>
 </ul>
 
 <h2 id="premise-derived">Premise vs. Derived</h2>
@@ -245,45 +253,76 @@ The following terms explain how to read belief pages.</p>
     other beliefs. Its truth value is computed automatically from the network.</li>
 </ul>
 
+<h2 id="well-foundedness">Well-Foundedness</h2>
+<p>IN status must ultimately be grounded in premises &mdash; no belief can hold itself up by
+its own bootstraps. If two beliefs each list the other as an antecedent with no premise
+anchor, neither can be IN. This well-foundedness constraint prevents circular support and
+ensures that every IN belief traces back to at least one direct observation or assertion.</p>
+
 <h2 id="depth">Depth</h2>
-<p>Depth measures how far a derived belief is from its nearest premise. Depth 0 is a premise.
-Depth 1 means the belief is derived directly from premises. Depth 3 means there are three
-levels of reasoning between this belief and the premises it ultimately rests on. Higher depth
-means longer justification chains — more reasoning steps, but also more points where the
-chain could break.</p>
+<p>Depth measures how far a derived belief is from the premises it rests on. Depth 0 is a
+premise. Depth 1 means the belief is derived directly from premises. When a belief has
+multiple justifications with different chain lengths, depth reflects the <em>longest</em>
+chain (maximum over all antecedents across all justifications). Higher depth means more
+reasoning steps between this belief and the observations it ultimately depends on &mdash;
+more inferential distance, but also more points where the chain could break.</p>
 
 <h2 id="justifications">Justifications</h2>
-<p>A justification is a rule that says: "this belief is IN <em>if</em> all its
+<p>A justification is a rule that says: &ldquo;this belief is IN <em>if</em> all its
 <strong>antecedents</strong> are IN <em>and</em> none of its <strong>unless</strong> (outlist)
-nodes are IN." This is called an SL (Support List) justification.</p>
+nodes are IN.&rdquo; This is called an SL (Support List) justification.</p>
 <ul>
-  <li><strong>Antecedents</strong> — beliefs that must all be IN for this justification to hold.
+  <li><strong>Antecedents</strong> &mdash; beliefs that must all be IN for this justification to hold.
     If any antecedent goes OUT, the justified belief goes OUT too (unless another justification
     still supports it).</li>
-  <li><strong>Unless (outlist)</strong> — beliefs that defeat this justification if they become IN.
-    This is the non-monotonic reasoning mechanism: it allows the network to express "A is true
-    unless B" — default reasoning that can be overridden by new evidence.</li>
+  <li><strong>Unless (outlist)</strong> &mdash; beliefs that defeat this justification if they become IN.
+    This is the non-monotonic reasoning mechanism: it allows the network to express &ldquo;A is true
+    unless B&rdquo; &mdash; default reasoning that can be overridden by new evidence.</li>
 </ul>
 <p>A belief can have multiple justifications. It stays IN as long as <em>at least one</em>
 justification is satisfied.</p>
 
 <h2 id="challenges">Challenges and Defenses</h2>
 <p>A <strong>challenge</strong> is a belief that contests another belief by adding itself to
-the target's outlist. When a challenge is IN, it defeats the target's justification — the
-target goes OUT. A <strong>defense</strong> counters a challenge by placing the challenge in
-<em>its</em> outlist, creating a dialectical structure: if the defense holds, the challenge
-goes OUT, and the original belief is restored.</p>
+the outlist of <em>every</em> justification the target has. This means a single challenge
+defeats all of the target&rsquo;s justifications at once &mdash; the target goes OUT unless
+a defense neutralizes the challenge. If the target is a premise (no justifications), it is
+converted to a justified node with the challenge in its outlist.</p>
+<p>A <strong>defense</strong> counters a challenge using the same mechanism in reverse: it
+places the challenge in <em>its own</em> outlist, creating a dialectical structure. Since
+the defense is IN by default, the challenge goes OUT, which removes it as a defeater and
+restores the original belief.</p>
+
+<h2 id="nogoods">Nogoods and Dependency-Directed Backtracking</h2>
+<p>A <strong>nogood</strong> is a recorded contradiction &mdash; a set of beliefs that cannot
+all be IN simultaneously. When the system detects a nogood, it performs
+<strong>dependency-directed backtracking</strong>: it traces the contradiction to its root
+causes and retracts the least-entrenched premise responsible. This is more targeted than
+blind retraction &mdash; the system uses the justification graph to find the weakest link
+rather than arbitrarily choosing what to give up. Beliefs retracted by backtracking carry
+a Reason OUT explaining the contradiction that triggered the retraction.</p>
 
 <h2 id="retraction">Retraction and Cascades</h2>
-<p>When a belief is retracted, the system propagates the change: every belief that depended
-on the retracted belief is re-evaluated. If a derived belief has no remaining valid
-justification, it goes OUT too. This cascade continues through the network until all truth
-values are consistent. Retracted beliefs show a <strong>Reason OUT</strong> explaining why
-they were retracted.</p>
+<p>When a belief is explicitly retracted, the system propagates the change: every derived
+belief that depended on the retracted belief is re-evaluated. If a derived belief has no
+remaining valid justification, it goes OUT too. This cascade continues through the network
+until all truth values are consistent.</p>
+<p>Only explicitly retracted beliefs show a <strong>Reason OUT</strong> on their wiki page.
+Cascade-OUT beliefs have no Reason OUT &mdash; instead, you can trace the cause by following
+their justification chain until you find the antecedent that went OUT.</p>
+
+<h2 id="provenance">Provenance</h2>
+<p>Belief pages show provenance metadata when available: the <strong>source</strong> (where
+the belief was observed or derived from, such as a code exploration entry or review report),
+an optional <strong>source URL</strong> for external references, and timestamps for when the
+belief was <strong>created</strong>, last <strong>reviewed</strong>, and last
+<strong>verified</strong>. Provenance appears inline on the status line and as dates below it.
+For code-domain beliefs, the source file is the ground truth. For world-knowledge beliefs,
+provenance becomes critical metadata for resolving contradictions.</p>
 
 <h2 id="topics">Topics</h2>
-<p>Beliefs are grouped into topics by an LLM classifier that reads each belief's text and
-assigns it to a semantic category. Topics are not part of the TMS data model — they are a
+<p>Beliefs are grouped into topics by an LLM classifier that reads each belief&rsquo;s text and
+assigns it to a semantic category. Topics are not part of the TMS data model &mdash; they are a
 navigational layer added by the wiki generator to make large networks browsable.</p>
 {% endblock %}
 """

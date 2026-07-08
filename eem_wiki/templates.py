@@ -138,7 +138,7 @@ BELIEF_TEMPLATE = """\
   </p>
   {% endif %}
 
-  {% if retract_reason %}
+  {% if retract_reason and truth_value == 'OUT' %}
   <p><strong>Reason OUT:</strong> {{ retract_reason }}</p>
   {% endif %}
 

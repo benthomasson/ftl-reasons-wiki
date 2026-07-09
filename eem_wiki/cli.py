@@ -132,6 +132,106 @@ def build_all(config_path, output_dir, base_url, model, timeout, parallel,
     click.echo(f"\nBuilt {len(all_stats)} wikis → {output_dir}/")
 
 
+@cli.command("review-summaries")
+@click.option("--summaries-dir", required=True, type=click.Path(exists=True),
+              help="Directory containing belief-summaries.json")
+@click.option("--input", "-i", "input_path", required=True,
+              type=click.Path(exists=True), help="Path to network.json")
+@click.option("-m", "--model", default="claude",
+              help="LLM model for review (default: claude)")
+@click.option("--timeout", default=300, type=int,
+              help="LLM timeout in seconds (default: 300)")
+@click.option("--filter", "filter_type", default=None,
+              type=click.Choice(["defeats"]),
+              help="Only review specific belief types")
+@click.option("--fix", is_flag=True, default=False,
+              help="Regenerate flagged summaries with tighter prompt")
+@click.option("--parallel", default=0, type=int,
+              help="Concurrent LLM workers (default: 0 = sequential)")
+def review_summaries(summaries_dir, input_path, model, timeout, filter_type,
+                     fix, parallel):
+    """Review cached belief summaries for meaning drift."""
+    from .summarize import review_belief_summary, summarize_defeater, summarize_belief
+
+    with open(input_path) as f:
+        data = json.load(f)
+    nodes = data.get("nodes", {})
+
+    belief_path = os.path.join(summaries_dir, "belief-summaries.json")
+    with open(belief_path) as f:
+        summaries = json.load(f)
+
+    to_review = {}
+    for nid, summary in summaries.items():
+        if not summary:
+            continue
+        node = nodes.get(nid)
+        if not node:
+            continue
+        if filter_type == "defeats":
+            metadata = node.get("metadata") or {}
+            if not metadata.get("defeats_node"):
+                continue
+        to_review[nid] = summary
+
+    click.echo(f"Reviewing {len(to_review)} summaries...")
+
+    results = {"PASS": [], "DRIFT": [], "REVERSED": [], "ERROR": [], "UNKNOWN": []}
+
+    def _do_review(nid):
+        node = nodes[nid]
+        return nid, review_belief_summary(nid, node, to_review[nid], model, timeout)
+
+    items = list(to_review.keys())
+    if parallel > 0:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=parallel) as executor:
+            futures = {executor.submit(_do_review, nid): nid for nid in items}
+            done = 0
+            for future in as_completed(futures):
+                done += 1
+                nid, result = future.result()
+                verdict = result["verdict"]
+                results[verdict].append((nid, result["explanation"]))
+                if verdict != "PASS":
+                    click.echo(f"  [{verdict}] {nid}: {result['explanation']}")
+    else:
+        for i, nid in enumerate(items, 1):
+            if i % 10 == 0:
+                click.echo(f"  Reviewed {i}/{len(items)}...", err=True)
+            _, result = _do_review(nid)
+            verdict = result["verdict"]
+            results[verdict].append((nid, result["explanation"]))
+            if verdict != "PASS":
+                click.echo(f"  [{verdict}] {nid}: {result['explanation']}")
+
+    click.echo(f"\nResults: {len(results['PASS'])} PASS, "
+               f"{len(results['DRIFT'])} DRIFT, "
+               f"{len(results['REVERSED'])} REVERSED, "
+               f"{len(results['ERROR'])} ERROR")
+
+    if fix and (results["DRIFT"] or results["REVERSED"]):
+        flagged = [nid for nid, _ in results["DRIFT"] + results["REVERSED"]]
+        click.echo(f"\nRegenerating {len(flagged)} flagged summaries...")
+        for i, nid in enumerate(flagged, 1):
+            node = nodes[nid]
+            metadata = node.get("metadata") or {}
+            if metadata.get("defeats_node"):
+                new_summary = summarize_defeater(nid, node, nodes, model, timeout)
+            else:
+                new_summary = summarize_belief(nid, node, nodes, model, timeout)
+            if new_summary:
+                summaries[nid] = new_summary
+                click.echo(f"  [{i}/{len(flagged)}] {nid}: regenerated")
+            else:
+                click.echo(f"  [{i}/{len(flagged)}] {nid}: failed", err=True)
+
+        with open(belief_path, "w") as f:
+            json.dump(summaries, f, indent=2, sort_keys=True, ensure_ascii=False)
+            f.write("\n")
+        click.echo(f"Updated {belief_path}")
+
+
 @cli.command()
 @click.argument("directory", default="dist")
 @click.option("--port", "-p", default=8000, help="Port (default: 8000)")

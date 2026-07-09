@@ -71,6 +71,111 @@ no bullet lists, no bold/italic. Separate paragraphs with blank lines.
 {sample_beliefs}"""
 
 
+DEFEATER_SUMMARY_PROMPT = """\
+You are writing a plain-language summary for a defeat verdict in a Truth Maintenance \
+System. This belief explains why another belief's justification is invalid.
+
+Summarize what the verdict finds is wrong with the justification, not what the \
+defeated belief claims. Do not reinterpret the verdict as a problem with the \
+defeated belief itself.
+
+Do not repeat the belief text verbatim. Do not use the word "belief". Just explain \
+what the verdict says is wrong.
+
+Output plain text only. No markdown formatting — no bold, italic, headers, or lists.
+
+Belief ID: {node_id}
+Status: {truth_value}
+Defeated belief: {defeats_node}
+
+Verdict: {text}
+
+{context}"""
+
+
+REVIEW_SUMMARY_PROMPT = """\
+You are reviewing an LLM-generated summary of a belief from a Truth Maintenance System.
+
+The belief text is the authoritative source. The summary should accurately represent \
+what the belief says — not reinterpret, reverse, or shift its subject.
+
+Common failure modes for meta-beliefs (beliefs about other beliefs):
+- USE/MENTION COLLAPSE: The summary describes the thing the belief is about, rather \
+than what the belief says about it
+- REVERSAL: The summary reverses the finding (e.g. "X lacks traceability" becomes \
+"the reasoning couldn't be traced")
+- SUBJECT SHIFT: The summary changes what the belief is about
+
+Belief ID: {node_id}
+Belief text: {text}
+Summary: {summary}
+
+Respond with exactly one of:
+- PASS: Summary accurately represents the belief
+- DRIFT: Summary shifts meaning but doesn't reverse it
+- REVERSED: Summary reverses or substantially misrepresents the finding
+
+Then one sentence explaining your verdict."""
+
+
+def review_belief_summary(node_id, node, summary, model, timeout):
+    """Review an LLM-generated summary against the belief text.
+
+    Returns: {"verdict": "PASS"|"DRIFT"|"REVERSED", "explanation": str}
+    """
+    from reasons.llm import invoke_model
+
+    prompt = REVIEW_SUMMARY_PROMPT.format(
+        node_id=node_id,
+        text=node.get("text", ""),
+        summary=summary,
+    )
+
+    try:
+        result = invoke_model(prompt, model=model, timeout=timeout)
+    except Exception as e:
+        return {"verdict": "ERROR", "explanation": str(e)}
+
+    result = result.strip()
+    for verdict in ("PASS", "DRIFT", "REVERSED"):
+        if result.upper().startswith(verdict):
+            explanation = result[len(verdict):].strip().lstrip(":").strip()
+            return {"verdict": verdict, "explanation": explanation}
+
+    return {"verdict": "UNKNOWN", "explanation": result}
+
+
+def summarize_defeater(node_id, node, nodes, model, timeout):
+    """Generate an LLM summary for a defeater belief using a tighter prompt."""
+    from reasons.llm import invoke_model
+
+    metadata = node.get("metadata") or {}
+    defeats_node = metadata.get("defeats_node", "unknown")
+
+    defeated = nodes.get(defeats_node, {})
+    context_lines = [f"Defeated belief text: {defeated.get('text', '')}"]
+
+    for j in defeated.get("justifications", []):
+        for ant_id in j.get("antecedents", []):
+            ant = nodes.get(ant_id, {})
+            context_lines.append(f"Antecedent [{ant_id}]: {ant.get('text', '')}")
+
+    prompt = DEFEATER_SUMMARY_PROMPT.format(
+        node_id=node_id,
+        truth_value=node.get("truth_value", "?"),
+        defeats_node=defeats_node,
+        text=node.get("text", ""),
+        context="\n".join(context_lines),
+    )
+
+    try:
+        return invoke_model(prompt, model=model, timeout=timeout)
+    except Exception as e:
+        print(f"  WARN: defeater summary for '{node_id}' failed: {e}",
+              file=sys.stderr)
+        return ""
+
+
 def summarize_project(project_name, nodes, topics, model, timeout):
     """Generate an LLM summary for the project index page."""
     from reasons.llm import invoke_model

@@ -37,9 +37,11 @@ def cli():
               help="Use LLM for topics and topic summaries, skip belief summaries")
 @click.option("--summaries-dir", default=None, type=click.Path(),
               help="Directory for committable summary JSON files")
+@click.option("--topics-json", default=None, type=click.Path(exists=True),
+              help="JSON file with topic assignments {topic: [belief-ids]}. Skips topic calculation")
 def build(input_path, output_dir, base_url, project_name, model, timeout,
           parallel, no_topic_cache, topics_only, skip_belief_summaries,
-          summaries_dir):
+          summaries_dir, topics_json):
     """Generate static wiki from a network.json export."""
     if skip_belief_summaries:
         topics_only_val = "with-summaries"
@@ -52,7 +54,8 @@ def build(input_path, output_dir, base_url, project_name, model, timeout,
                           model=model, timeout=timeout, parallel=parallel,
                           no_topic_cache=no_topic_cache,
                           topics_only=topics_only_val,
-                          summaries_dir=summaries_dir)
+                          summaries_dir=summaries_dir,
+                          topics_json=topics_json)
     click.echo(f"Generated {stats['beliefs']} belief pages, "
                f"{stats['topics']} topic pages")
     click.echo(f"Output: {output_dir}/")
@@ -110,6 +113,10 @@ def build_all(config_path, output_dir, base_url, model, timeout, parallel,
         wiki_base = f"{base}/{name}" if base else ""
         wiki_summaries = os.path.join(summaries_dir, name)
 
+        wiki_topics_json = entry.get("topics_json")
+        if wiki_topics_json and not os.path.isabs(wiki_topics_json):
+            wiki_topics_json = os.path.join(config_dir, wiki_topics_json)
+
         click.echo(f"\nBuilding {name}...")
         stats = generate_site(
             input_path, wiki_output,
@@ -119,7 +126,8 @@ def build_all(config_path, output_dir, base_url, model, timeout, parallel,
             no_topic_cache=no_topic_cache,
             topics_only=topics_only_val,
             directory_root="../",
-            summaries_dir=wiki_summaries)
+            summaries_dir=wiki_summaries,
+            topics_json=wiki_topics_json)
 
         stats["name"] = name
         stats["project_name"] = entry.get("project_name", "")

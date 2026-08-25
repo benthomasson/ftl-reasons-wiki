@@ -6,13 +6,14 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape as xml_escape
 
-from .templates import build_jinja_env
+from .templates import build_jinja_env, slugify
 from .topics import assign_topics
 
 
 def generate_site(input_path, output_dir, base_url="", project_name=None,
                    model=None, timeout=300, parallel=0, no_topic_cache=False,
-                   topics_only=False, directory_root=None, summaries_dir=None):
+                   topics_only=False, directory_root=None, summaries_dir=None,
+                   topics_json=None):
     """Generate the full static site from a network.json export.
 
     Args:
@@ -34,7 +35,20 @@ def generate_site(input_path, output_dir, base_url="", project_name=None,
         meta["project_name"] = basename or "Belief Wiki"
 
     dependents = _build_dependents_index(nodes)
-    if model:
+    if topics_json:
+        import sys
+        with open(topics_json) as f:
+            topics = json.load(f)
+        assigned = {nid for ids in topics.values() for nid in ids}
+        missing = [nid for nid in nodes if nid not in assigned]
+        if missing:
+            other_key = next((k for k in topics if k.lower() == "other"), "Other")
+            topics.setdefault(other_key, []).extend(missing)
+            print(f"  {len(missing)} beliefs unassigned, added to '{other_key}'",
+                  file=sys.stderr)
+        print(f"Using topics from {topics_json} ({len(topics)} topics)",
+              file=sys.stderr)
+    elif model:
         from .topics import assign_topics_llm
         topics = assign_topics_llm(
             nodes, model, timeout=timeout, parallel=parallel,
@@ -349,7 +363,7 @@ def _render_topic_pages(env, output_dir, nodes, topics, topic_summaries=None):
     tmpl = env.get_template("topic.html")
     summaries = topic_summaries or {}
     for topic, nids in topics.items():
-        topic_dir = os.path.join(output_dir, "topic", topic)
+        topic_dir = os.path.join(output_dir, "topic", slugify(topic))
         os.makedirs(topic_dir, exist_ok=True)
 
         beliefs = []
@@ -485,7 +499,7 @@ def _render_sitemap(output_dir, nodes, topics, base_url):
     ]
     lines.append(f'  <url><loc>{base}/</loc><priority>1.0</priority></url>')
     for topic in topics:
-        lines.append(f'  <url><loc>{base}/topic/{xml_escape(topic)}/</loc>'
+        lines.append(f'  <url><loc>{base}/topic/{slugify(topic)}/</loc>'
                       f'<priority>0.8</priority></url>')
     for nid in nodes:
         lines.append(f'  <url><loc>{base}/belief/{xml_escape(nid)}/</loc>'

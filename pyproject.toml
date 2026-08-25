@@ -18,5 +18,8 @@ llm = ["ftl-reasons"]
 [tool.uv.sources]
 ftl-reasons = { path = "../ftl-reasons", editable = true }
 
+[tool.setuptools.packages.find]
+include = ["eem_wiki*"]
+
 [project.scripts]
 eem-wiki = "eem_wiki.cli:cli"

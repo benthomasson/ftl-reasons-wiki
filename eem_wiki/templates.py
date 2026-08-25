@@ -1,6 +1,16 @@
 """Jinja2 HTML templates for the static wiki."""
 
+import re
+
 from jinja2 import Environment, BaseLoader
+
+
+def slugify(text):
+    """Convert topic name to URL-safe slug: lowercase, hyphens, no special chars."""
+    text = text.lower().strip()
+    text = re.sub(r'[&]+', 'and', text)
+    text = re.sub(r'[^a-z0-9]+', '-', text)
+    return text.strip('-')
 
 BASE_TEMPLATE = """\
 <!DOCTYPE html>
@@ -67,7 +77,7 @@ INDEX_TEMPLATE = """\
   <tbody>
   {% for topic, nids in topics|items %}
     <tr>
-      <td><a href="{{ root }}topic/{{ topic }}/">{{ topic }}</a></td>
+      <td><a href="{{ root }}topic/{{ topic|slugify }}/">{{ topic }}</a></td>
       <td>{{ nids|length }}</td>
     </tr>
   {% endfor %}
@@ -118,7 +128,7 @@ BELIEF_TEMPLATE = """\
 }
 </script>
 {% endblock %}
-{% block nav %} &rsaquo; <a href="{{ root }}topic/{{ topic }}/">{{ topic }}</a>{% endblock %}
+{% block nav %} &rsaquo; <a href="{{ root }}topic/{{ topic|slugify }}/">{{ topic }}</a>{% endblock %}
 {% block content %}
 <article>
   <h1>{{ node_id }}</h1>
@@ -390,6 +400,7 @@ def build_jinja_env():
     env = Environment(loader=BaseLoader())
     env.globals["root"] = ""
     env.filters["paragraphs"] = _paragraphs
+    env.filters["slugify"] = slugify
     templates = {
         "base.html": BASE_TEMPLATE,
         "index.html": INDEX_TEMPLATE,
